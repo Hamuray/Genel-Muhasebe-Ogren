@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Muhasebe Soru–Cevap & Yevmiye Alıştırma (Tek Dosya)</title>
+<style>
+  :root{
+    --bg:#f7f7f9; --card:#fff; --text:#111; --muted:#6b7280; --line:#e5e7eb;
+    --brand:#111827; --ok:#065f46; --err:#7f1d1d; --pill:#eef2ff; --accent:#2563eb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  .container{max-width:1100px;margin:28px auto;padding:0 16px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  button, .btn{
+    appearance:none;border:1px solid var(--line);background:#fff;border-radius:999px;
+    padding:10px 14px;cursor:pointer;font-weight:600
+  }
+  button:hover{background:#fafafa}
+  .btn-primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .btn-primary:hover{filter:brightness(.95)}
+  .badge{display:inline-block;padding:4px 10px;border-radius:999px;background:var(--pill);color:#111;font-size:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .grow{flex:1}
+  h1{margin:0 0 8px 0;font-size:22px}
+  h2{margin:12px 0 8px 0;font-size:18px}
+  .muted{color:var(--muted)}
+  .status{margin-top:8px;font-weight:700}
+  .status.ok{color:var(--ok)}
+  .status.err{color:var(--err)}
+  /* Yevmiye tablo stili */
+  .ledger{margin-top:10px;border:1px solid var(--line);border-radius:18px;overflow:hidden}
+  .ledger table{width:100%;border-collapse:collapse}
+  .ledger thead th{
+    background:#e9ecef;color:#111;padding:14px 12px;text-align:center;font-weight:800
+  }
+  .ledger td,.ledger th{border-top:1px solid #e6e6e6;padding:12px}
+  .ledger td input,.ledger td select{
+    width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff
+  }
+  .right{text-align:right}
+  tfoot th{background:#f2f3f5}
+  .pillbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .panel{padding:10px 12px;border:1px dashed var(--line);border-radius:12px;background:#fcfcfd}
+  .hidden{display:none}
+  .flex-between{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .progress{height:10px;background:#eceff3;border-radius:999px;overflow:hidden}
+  .progress > div{height:100%;background:var(--accent);width:0%}
+  /* Kategori paneli */
+  .cat-panel{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.28)}
+  .cat-modal{background:#fff;border-radius:16px;border:1px solid var(--line);padding:16px;max-width:520px;width:min(92vw,520px)}
+  .cat-list{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:12px;padding:8px;margin-top:8px}
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="toolbar">
+      <button id="btnAsk" class="btn-primary">Soru Sor</button>
+      <button id="btnCats">Soru Kategorileri</button>
+      <button id="btnHint">İpucu</button>
+      <button id="btnReveal">Cevabı Gör</button>
+      <button id="btnPlay">Oyna</button>
+      <label class="btn" style="margin-left:auto">
+        Veri Yükle (TSV)
+        <input id="fileInput" type="file" accept=".tsv,.txt" style="display:none">
+      </label>
+    </div>
+
+    <div class="card">
+      <div class="flex-between">
+        <h1 id="qTitle">Hazır mısınız? “Soru Sor” ile başlayın.</h1>
+        <div id="catBadges" class="pillbar"></div>
+      </div>
+      
+      <!-- Yevmiye Şablonu -->
+      <div class="ledger">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:60%">Hesap Kodu ve Adı</th>
+              <th style="width:20%">Borç</th>
+              <th style="width:20%">Alacak</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><select id="selTop"></select></td>
+              <td><input id="debitTop" class="right" type="text" readonly></td>
+              <td><input class="right" type="text" value="" readonly></td>
+            </tr>
+            <tr>
+              <td><select id="selBottom"></select></td>
+              <td><input class="right" type="text" value="" readonly></td>
+              <td><input id="creditBottom" class="right" type="text" readonly></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <th class="right" colspan="1">TOPLAM</th>
+              <th id="sumDebit" class="right">0,00</th>
+              <th id="sumCredit" class="right">0,00</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div id="status" class="status muted">Bir soru seçin ve iki hesabı belirleyin.</div>
+        <!-- İpucu bloğu -->
+    <div id="hintBox" class="panel hidden" style="margin-top:10px">
+        <div><b>İpucu 1:</b> <span id="hint1" class="muted"></span></div>
+        <div><b>İpucu 2:</b> <span id="hint2" class="muted"></span></div>
+    </div>
+
+      <!-- Oyun göstergeleri -->
+      <div id="gameBox" class="panel hidden" style="margin-top:10px">
+        <div class="flex-between">
+          <div><b>Oyun:</b> <span id="gameRound">—</span> / 10</div>
+          <div><b>Skor:</b> <span id="gameScore">0</span></div>
+        </div>
+        <div class="progress" style="margin-top:8px"><div id="gameProg"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kategori Paneli -->
+  <div id="catPanel" class="cat-panel">
+    <div class="cat-modal">
+      <div class="flex-between">
+        <h2>Kategoriler</h2>
+        <button id="btnCloseCats">Kapat</button>
+      </div>
+      <div class="row" style="margin:6px 0">
+        <button id="btnAllCats">Tümünü Seç</button>
+        <button id="btnClearCats">Temizle</button>
+      </div>
+      <div id="catList" class="cat-list"></div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end">
+        <button id="btnApplyCats" class="btn-primary">Uygula</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ========================== Yardımcılar ========================== */
+const fmtTRY = n => (isFinite(n)? new Intl.NumberFormat('tr-TR',{minimumFractionDigits:2, maximumFractionDigits:2}).format(n): '0,00');
+function parseTRY(str){
+  if (str == null) return 0;
+  const s = String(str).trim().replace(/\./g,'').replace(',','.');
+  const v = parseFloat(s); return isNaN(v)? 0 : v;
+}
+function pickRandom(arr){ return arr[Math.floor(Math.random()*arr.length)] }
+function uniq(arr){ return [...new Set(arr)] }
+function byId(id){ return document.getElementById(id) }
+function extractKodAd(raw){
+  // "153.TİCARİ MALLAR" -> {kod:'153', ad:'TİCARİ MALLAR'}
+  let s = String(raw||'').trim();
+  const m = s.match(/^(\d+)\s*\.?\s*(.*)$/);
+  return m? {kod:m[1], ad:(m[2]||'').trim()} : {kod:s, ad:''};
+}
+
+/* ========================== Global State ========================== */
+const state = {
+  questions: [],     // {id,kategori,metin,borcKod,alacakKod,borc,alacak,ip1,ip2, raw:{...}}
+  categories: [],    // benzersiz kategori listesi
+  accounts: [],      // [{kod,ad}] benzersiz
+  asked: new Set(),  // normal mod tekrar azaltma
+  current: null,     // aktif soru objesi
+  attempts: 0,       // aktif sorudaki deneme sayısı
+  selectedCats: new Set(), // filtre
+  game: {active:false, round:0, score:0, pool:[], asked:new Set()}
+};
+
+/* ========================== Örnek mini veri (fallback) ========================== */
+const EMBEDDED_TSV = `SIRA\tÖZET\tBORÇLU HESAP\tALACAKLI HESAP\tİŞLEM\tBORÇ\tALACAK\tAÇIKLAMA1\tAÇIKLAMA2
+1\tKURULUŞ\t100.KASA\t500.SERMAYE\tişletme 100.000 TL değerinde nakit sermaye ile kurulmuştur\t100.000,00\t100.000,00\tKasa artar / Sermaye artar\tHazır Değer + / Özkaynak +
+2\tMAL ALIŞ\t153.TİCARİ MALLAR\t100.KASA\t120.000 TL değerinde ticari mal peşin satın alınmıştır\t120.000,00\t120.000,00\tStok artar / Kasa azalır\tStok + / Hazır Değer -
+3\tMAL ALIŞ\t153.TİCARİ MALLAR\t102.BANKALAR\t200.000 TL değerinde ticari mal peşin (banka) alınmıştır\t200.000,00\t200.000,00\tStok artar / Banka azalır\tStok + / Hazır Değer -
+4\tMAL ALIŞ\t153.TİCARİ MALLAR\t320.SATICILAR\t900.000 TL veresiye mal alınmıştır\t900.000,00\t900.000,00\tStok artar / Satıcı borcu artar\tStok + / Ticari Borç +`;
+
+/* ========================== TSV Ayrıştırma ========================== */
+function parseTSV(text){
+  const lines = text.replace(/\r/g,'').split('\n').filter(x=>x.trim().length);
+  const header = lines.shift().split('\t').map(s=>s.trim().toUpperCase());
+  const get = name => header.indexOf(name);
+  const req = ['SIRA','ÖZET','BORÇLU HESAP','ALACAKLI HESAP','İŞLEM','BORÇ','ALACAK','AÇIKLAMA1','AÇIKLAMA2'];
+  for(const k of req){ if(get(k)===-1) throw new Error(`TSV başlığında "${k}" sütunu bulunamadı.`) }
+
+  const rows = lines.map((ln,i)=>{
+    const cols = ln.split('\t');
+    const row = Object.fromEntries(header.map((h,idx)=>[h, cols[idx]??'']));
+    return row;
+  });
+
+  // Soru objesine dönüştür
+  const questions = rows.map((r, idx)=>{
+    const b = extractKodAd(r['BORÇLU HESAP']);
+    const a = extractKodAd(r['ALACAKLI HESAP']);
+    return {
+      id: String(r['SIRA']||idx+1),
+      kategori: String(r['ÖZET']||'GENEL').trim(),
+      metin: String(r['İŞLEM']||'').trim(),
+      borcKod: b.kod, borcAd: b.ad,
+      alacakKod: a.kod, alacakAd: a.ad,
+      borc: parseTRY(r['BORÇ']), alacak: parseTRY(r['ALACAK']),
+      ip1: String(r['AÇIKLAMA1']||'').trim(),
+      ip2: String(r['AÇIKLAMA2']||'').trim(),
+      raw:r
+    };
+  });
+
+  // Hesap listesi
+  const accMap = new Map();
+  for(const q of questions){
+    if(q.borcKod && !accMap.has(q.borcKod)) accMap.set(q.borcKod, {kod:q.borcKod, ad:q.borcAd});
+    if(q.alacakKod && !accMap.has(q.alacakKod)) accMap.set(q.alacakKod, {kod:q.alacakKod, ad:q.alacakAd});
+  }
+  const accounts = [...accMap.values()].sort((x,y)=>x.kod.localeCompare(y.kod));
+  const categories = uniq(questions.map(q=>q.kategori)).sort();
+
+  return {questions, accounts, categories};
+}
+
+/* ========================== UI Populate ========================== */
+function populateAccounts(){
+  const opts = ['<option value="">(Seçiniz)</option>'].concat(
+    state.accounts.map(a=>`<option value="${a.kod}">${a.kod} ${a.ad||''}</option>`)
+  ).join('');
+  byId('selTop').innerHTML = opts;
+  byId('selBottom').innerHTML = opts;
+}
+function showCategoriesBadges(){
+  const box = byId('catBadges');
+  box.innerHTML = '';
+  if(state.selectedCats.size){
+    state.selectedCats.forEach(c=>{
+      const s = document.createElement('span');
+      s.className='badge'; s.textContent=c;
+      box.appendChild(s);
+    });
+  }
+}
+function setStatus(msg, type='muted'){
+  const el = byId('status');
+  el.className = `status ${type}`;
+  el.innerHTML = msg;
+}
+
+/* ========================== Sesler ========================== */
+const audio = {
+  ctx: null,
+  ensure(){ if(!this.ctx) this.ctx = new (window.AudioContext||window.webkitAudioContext)() },
+  beep(ok=true){
+    this.ensure();
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type='sine'; o.frequency.value = ok? 880: 220;
+    g.gain.value=0.001; g.gain.exponentialRampToValueAtTime(0.2, this.ctx.currentTime+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime+0.18);
+    o.connect(g).connect(this.ctx.destination); o.start(); o.stop(this.ctx.currentTime+0.2);
+  },
+  clap(){
+    // minik alkış hissi: 3 kısa bip
+    this.ensure();
+    [880, 660, 990].forEach((f,i)=>{
+      const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+      o.type='triangle'; o.frequency.value=f;
+      const t=this.ctx.currentTime + i*0.06;
+      g.gain.value=0.0001; g.gain.exponentialRampToValueAtTime(0.2, t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+0.18);
+      o.connect(g).connect(this.ctx.destination); o.start(t); o.stop(t+0.2);
+    });
+  }
+};
+
+/* ========================== Soru Motoru ========================== */
+function nextQuestion(forceFromGame=false){
+  // Havuz: kategori filtresi varsa ona göre
+  let pool = state.questions.filter(q => !state.selectedCats.size || state.selectedCats.has(q.kategori));
+  if(!pool.length){ setStatus('Seçili kategorilerde soru bulunamadı. Filtreyi temizleyin veya TSV yükleyin.','err'); return }
+
+  // Normal modda tekrar azalt: asked seti
+  if(!state.game.active){
+    const unasked = pool.filter(q=>!state.asked.has(q.id));
+    if(unasked.length) pool = unasked;
+  }else{
+    // Oyun modunda belirlenmiş havuzdan çek
+    pool = state.game.pool.filter(q=>!state.game.asked.has(q.id));
+    if(!pool.length){ return endGame() }
+  }
+
+  const q = pickRandom(pool);
+  if(state.game.active) state.game.asked.add(q.id); else state.asked.add(q.id);
+  setCurrentQuestion(q);
+}
+function setCurrentQuestion(q){
+  state.current = q; state.attempts = 0;
+  byId('qTitle').textContent = q.metin || '—';
+  // Tutarları yerleştir
+  byId('debitTop').value   = fmtTRY(q.borc);
+  byId('creditBottom').value = fmtTRY(q.alacak);
+  byId('sumDebit').textContent  = fmtTRY(q.borc);
+  byId('sumCredit').textContent = fmtTRY(q.alacak);
+  // Selectleri sıfırla
+  byId('selTop').value=''; byId('selBottom').value='';
+  // İpucunu gizle
+  byId('hint1').textContent = q.ip1||'—';
+  byId('hint2').textContent = q.ip2||'—';
+  byId('hintBox').classList.add('hidden');
+  setStatus('İki hesabı seçin ve eşleştirin.','muted');
+}
+
+/* ========================== Doğrulama ========================== */
+function validateIfReady(){
+  const s1 = byId('selTop').value, s2 = byId('selBottom').value;
+  if(!s1 || !s2) return; // iki seçim olmadan doğrulama yok
+
+  if(s1 === s2){
+    setStatus('Aynı hesabı iki kez seçemezsiniz.','err'); audio.beep(false); return;
+  }
+  const q=state.current; if(!q) return;
+
+  const chosen = new Set([s1,s2]);
+  const correct = new Set([q.borcKod, q.alacakKod]);
+  const ok = chosen.size===2 && chosen.has(q.borcKod) && chosen.has(q.alacakKod);
+
+  state.attempts++;
+  if(ok){
+    setStatus('🎉 Bravo, bildiniz!', 'ok'); audio.clap();
+    if(state.game.active){
+      const pts = (state.attempts===1)?3:(state.attempts===2)?2:1;
+      state.game.score += pts; updateGameUI();
+      // 0.6 sn sonra sıradaki
+      setTimeout(()=>{ gameNextRound(); }, 600);
+    }
+  }else{
+  setStatus('Eşleşmedi, tekrar deneyin.','err'); audio.beep(false);
+  if(state.game.active){
+    // 3. yanlış denemede puan yok ve otomatik sonraki soruya geç
+    if(state.attempts >= 3){
+      setStatus('3 denemede yanıtlanamadı. Puan yok, sonraki soruya geçiliyor.','err');
+      setTimeout(()=>{ gameNextRound(); }, 600);
+    }
+  }
+}
+
+}
+
+/* ========================== Cevabı Gör ========================== */
+function revealAnswer(){
+  const q=state.current; if(!q) return;
+  // Üst: borçlu, Alt: alacaklı
+  byId('selTop').value = q.borcKod || '';
+  byId('selBottom').value = q.alacakKod || '';
+  setStatus('Cevap gösterildi.', 'muted');
+  if(state.game.active){
+    // Bu soruya puan yok; bir sonraki
+    setTimeout(()=>{ gameNextRound(); }, 400);
+  }
+}
+
+/* ========================== Kategori Paneli ========================== */
+function openCats(){
+  const panel = byId('catPanel'); const list = byId('catList');
+  list.innerHTML = '';
+  state.categories.forEach(c=>{
+    const id = 'cat_'+c.replace(/\W+/g,'_');
+    const row = document.createElement('label');
+    row.className='row'; row.style.alignItems='center';
+    row.innerHTML = `<input type="checkbox" id="${id}" value="${c}" ${state.selectedCats.has(c)?'checked':''}> <span>${c}</span>`;
+    list.appendChild(row);
+  });
+  panel.style.display='grid';
+}
+function applyCats(){
+  const checks = Array.from(byId('catList').querySelectorAll('input[type=checkbox]'));
+  state.selectedCats = new Set(checks.filter(ch=>ch.checked).map(ch=>ch.value));
+  showCategoriesBadges();
+  byId('catPanel').style.display='none';
+}
+function closeCats(){ byId('catPanel').style.display='none' }
+
+/* ========================== Oyun Modu ========================== */
+function startGame(){
+  if(!state.questions.length){ setStatus('Önce veri yükleyin veya gömülü örnekleri kullanın.','err'); return }
+  // Filtreye uyanlardan 10 farklı soru
+  let pool = state.questions.filter(q => !state.selectedCats.size || state.selectedCats.has(q.kategori));
+  if(pool.length<10){ pool = [...pool]; } // az ise tekrar edebilir, asked ile engelleriz
+  // karıştır & ilk 10
+  pool = [...pool].sort(()=>Math.random()-0.5).slice(0,10);
+  state.game = {active:true, round:0, score:0, pool, asked:new Set()};
+  byId('gameBox').classList.remove('hidden');
+  updateGameUI();
+  gameNextRound();
+}
+function gameNextRound(){
+  state.game.round++;
+  updateGameUI();
+  if(state.game.round>10){ return endGame() }
+  // her turda yeni soru
+  nextQuestion(true);
+}
+function updateGameUI(){
+  byId('gameRound').textContent = Math.min(state.game.round,10);
+  byId('gameScore').textContent = state.game.score;
+  byId('gameProg').style.width = (Math.min(state.game.round,10)/10*100)+'%';
+}
+function endGame(){
+  setStatus(`Oyun bitti. Toplam Skor: <b>${state.game.score}</b>`, 'ok');
+  state.game.active=false; byId('gameBox').classList.add('hidden');
+}
+
+/* ========================== Veri Yükleme ========================== */
+function loadTSV(text){
+  const {questions, accounts, categories} = parseTSV(text);
+  state.questions = questions;
+  state.accounts = accounts;
+  state.categories = categories;
+  state.asked.clear(); state.selectedCats.clear();
+  populateAccounts(); showCategoriesBadges();
+  setStatus(`Veri yüklendi. Toplam soru: <b>${questions.length}</b>.`, 'ok');
+}
+function loadEmbedded(){
+  // 1) <script id="BOOT_TSV"> içeriği varsa onu kullan
+  const bootTag = document.getElementById('BOOT_TSV');
+  const inlineTSV = bootTag ? bootTag.textContent.trim() : '';
+  if(inlineTSV && inlineTSV.split('\n').length > 1){
+    try { loadTSV(inlineTSV); return; }
+    catch(e){ console.error('BOOT_TSV parse hatası:', e); }
+  }
+
+  // 2) Aynı klasörde data.tsv varsa onu dene (isteğe bağlı)
+  fetch('data.tsv').then(r=>{
+    if(!r.ok) throw new Error('data.tsv bulunamadı');
+    return r.text();
+  }).then(txt=>{
+    loadTSV(txt);
+  }).catch(err=>{
+    console.warn('data.tsv yüklenemedi:', err?.message || err);
+    // 3) Son çare: gömülü mini örnek
+    try { loadTSV(EMBEDDED_TSV); }
+    catch(e){ console.error(e); setStatus('Gömülü veri yüklenemedi: '+e.message,'err'); }
+  });
+}
+
+
+/* ========================== Eventler ========================== */
+byId('btnAsk').addEventListener('click', ()=> nextQuestion());
+byId('btnCats').addEventListener('click', openCats);
+byId('btnCloseCats').addEventListener('click', closeCats);
+byId('btnApplyCats').addEventListener('click', applyCats);
+byId('btnAllCats').addEventListener('click', ()=>{
+  byId('catList').querySelectorAll('input[type=checkbox]').forEach(ch=>ch.checked=true);
+});
+byId('btnClearCats').addEventListener('click', ()=>{
+  byId('catList').querySelectorAll('input[type=checkbox]').forEach(ch=>ch.checked=false);
+});
+byId('btnHint').addEventListener('click', ()=>{
+  byId('hintBox').classList.toggle('hidden');
+});
+byId('btnReveal').addEventListener('click', revealAnswer);
+byId('btnPlay').addEventListener('click', startGame);
+byId('fileInput').addEventListener('change', (e)=>{
+  const f = e.target.files?.[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => { try{ loadTSV(String(ev.target.result||'')); } catch(err){ setStatus(err.message,'err') } };
+  reader.readAsText(f, 'utf-8');
+});
+byId('selTop').addEventListener('change', validateIfReady);
+byId('selBottom').addEventListener('change', validateIfReady);
+
+/* ========================== Başlangıç ========================== */
+// Sayfa tamamen parse edilince #BOOT_TSV varsa onu yükle, yoksa fallback'e dön.
+document.addEventListener('DOMContentLoaded', ()=>{
+  const boot = document.getElementById('BOOT_TSV');
+  const txt  = boot && boot.textContent ? boot.textContent.trim() : '';
+  if (txt && txt.length > 0) {
+    try {
+      loadTSV(txt);
+    } catch (e) {
+      console.error(e);
+      setStatus('Başlangıç TSV yüklenemedi: ' + e.message, 'err');
+      loadEmbedded(); // emniyetli geri dönüş
+    }
+  } else {
+    loadEmbedded(); // #BOOT_TSV yoksa örnek veriyle başla
+  }
+});
+
+</script>
+<!-- Başlangıçta otomatik yüklenecek TSV (tam verinizi buraya yapıştırın) -->
+<script id="BOOT_TSV" type="text/tsv">
+SIRA	ÖZET	BORÇLU HESAP	ALACAKLI HESAP	İŞLEM	BORÇ	ALACAK	AÇIKLAMA1	AÇIKLAMA2
+1	KURULUŞ	100.KASA	500.SERMAYE	işletme 100.000 TL değerinde nakit sermaye ile kurulmuştur	100.000,00	100.000,00	Kasadaki para varlığında ARTIŞ / Sermaye kaynağında ARTIŞ meydana gelmiştir.	Hazır Değerlerde artış / Özkaynaklarda artış meydana gelir
+2	KURULUŞ	102.BANKALAR	500.SERMAYE	işletme banka hesabına yatan 100.000 TL sermaye ile kurulmuştur	100.000,00	100.000,00	Bankadaki para varlığında ARTIŞ / Sermaye kaynağında ARTIŞ meydana gelmiştir.	Hazır Değerlerde artış / Özkaynaklarda artış meydana gelir
+3	KURULUŞ	255.DEMİRBAŞLAR	500.SERMAYE	işletme 100.000 TL değerinde Demirbaş ile kurulmuştur	100.000,00	100.000,00	Demirbaş varlığında ARTIŞ / Sermaye kaynağında ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Özkaynaklarda ARTIŞ meydana gelir
+4	KURULUŞ	501.ÖDENMEMİŞ SERMAYE (-)	500.SERMAYE	işletme ortakların 100.000 TL sermaye taahhüdü ile faaliyetlerine başlamıştır.	100.000,00	100.000,00	Sermaye tahhüdünden olan alacaklarda ARTIŞ / Sermaye kaynağında ARTIŞ meydana gelmiştir.	Özkaynaklarda AZALIŞ / Özkaynaklarda ARTIŞ meydana gelir. (Toplam Özkaynak değişmez)
+5	KURULUŞ	102.BANKALAR	501.ÖDENMEMİŞ SERMAYE (-)	işletme ortakları 60.000 TL'yi işletmenin banka hesabına yatırarak sermaye taahhütlerini yerine getirmişlerdir.	60.000,00	60.000,00	Bankadaki para varlığında ARTIŞ, Sermaye tahhüdünden olan alacaklarda AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Özkaynaklarda ARTIŞ meydana gelir
+6	MAL ALIŞ	153.TİCARİ MALLAR	100.KASA	120.000 TL değerinde ticari mal peşin (nakit) satın alınmıştır	120.000,00	120.000,00	Ticari mal varlığında ARTIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir.	Stoklarda ARTIŞ / Hazır Değerlerden AZALIŞ meydana gelir
+7	MAL ALIŞ	153.TİCARİ MALLAR	102.BANKALAR	200.000 TL değerinde ticari mal peşin (banka havalesi ile) satın alınmıştır	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Stoklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+8	MAL ALIŞ	153.TİCARİ MALLAR	320.SATICILAR	900.000 TL değerinde ticari mal 2 ay vadeli veresiye satın alınmıştır	900.000,00	900.000,00	Ticari mal varlığında ARTIŞ / Satıcıya olan veresiye, senetsiz borçlarda ARTIŞ meydana gelmiştir. (Satıcılar ALACAKLI hale gelmiştir)	Stoklarda ARTIŞ / Ticari Borçlarda ARTIŞ meydana gelir
+9	MAL ALIŞ	153.TİCARİ MALLAR	321.BORÇ SENETLERİ	200.000 TL değerinde ticari mal 2 ay vadeli senet verilerek (keşide edilerek) satın alınmıştır	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Borç Senetlerinde ARTIŞ meydana gelmiştir. (Borç senetlerindeki artışlar hesabın ALACAK tarafına kaydedilir. Borç senedinin düzenlenerek imzalanmasına senet keşidesi denir. Bu işlemde işletme senet keşide ederek, senet ile borçlanmıştır.)	Stoklarda ARTIŞ / Ticari Borçlarda ARTIŞ meydana gelir
+10	MAL ALIŞ	153.TİCARİ MALLAR	103.VERİLEN ÇEKLER VE ÖDEME EMİRLERİ (-)	200.000 TL değerinde ticari mal 2 ay vadeli çek verilerek (keşide edilerek) satın alınmıştır	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Çekli borçlarda ARTIŞ meydana gelmiştir. (Çekli borçlardaki artışlar hesabın ALACAK tarafına kaydedilir. Çekin düzenlenerek imzalanmasına çek keşidesi denir. Bu işlemde işletme çek keşide ederek, çek ile borçlanmıştır.)	Stoklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+11	MAL ALIŞ	153.TİCARİ MALLAR	121.ALACAK SENETLERİ	200.000 TL değerinde ticari mal, senet ciro edilerek satın alınmıştır	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Senetli alacaklarda AZALIŞ gelmiştir. (Senetli alacakların azalması için daha önce bir senet alınmış olması gerekir. Daha önce alınan bir senedin başkasına verilmesi işlemine senet cirosu denir)	Stoklarda ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+12	MAL ALIŞ	153.TİCARİ MALLAR	101.ALINAN ÇEKLER	200.000 TL değerinde ticari mal, çek ciro edilerek satın alınmıştır	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Çekli alacaklarda AZALIŞ gelmiştir. (Çekli alacakların azalması için daha önce bir çek alınmış olması gerekir. Daha önce alınan bir çekin başkasına verilmesi işlemine çek cirosu denir)	Stoklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+13	MAL ALIŞ	153.TİCARİ MALLAR	300.BANKA KREDİLERİ	200.000 TL değerinde ticari mal, kredi kartı ile satın alınmıştır.	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Banka olan kredi borcunda ARTIŞ meydana gelmiştir. (Banka ALACAKLI hale gelmiştir. Kredi kartının işletmeye ait olduğu düşünülmelidir. Kredi kartı işletme sahibine ait ise 331 Ortaklara Borçlar hesabı kullanılır.)	Stoklarda ARTIŞ / Finansal Borçlarda ARTIŞ meydana gelir.
+14	MAL ALIŞ	153.TİCARİ MALLAR	420.SATICILAR	200.000 TL değerinde ticari mal 20 ay vadeli veresiye satın alınmıştır	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Satıcı olan 1 yıldan uzun vadeli borçlarda ARTIŞ meydana gelmiştir. (Satıcılar ALACAKLI hale gelmiştir)	Stoklarda ARTIŞ / Uzun Vadeli Ticari Borçlarda ARTIŞ meydana gelir
+15	MAL ALIŞ	153.TİCARİ MALLAR	421.BORÇ SENETLERİ	200.000 TL değerinde ticari mal 20 ay vadeli senet verilerek (keşide edilerek) satın alınmıştır	200.000,00	200.000,00	Ticari mal varlığında ARTIŞ / Uzun vadeli Borç Senetlerinde ARTIŞ meydana gelmiştir. (Borç senetlerindeki artışlar hesabın ALACAK tarafına kaydedilir. Borç senedinin düzenlenerek imzalanmasına senet keşidesi denir. Bu işlemde işletme senet keşide ederek, senet ile borçlanmıştır.)	Stoklarda ARTIŞ / Uzun Vadeli Ticari Borçlarda ARTIŞ meydana gelir
+16	MAL ALIŞ	320.SATICILAR	153.TİCARİ MALLAR	Daha önce veresiye satın alınan 200.000 TL değerinde ticari mal satıcıya iade edilmiştir.	200.000,00	200.000,00	Ticari mal varlığında AZALIŞ / Satıcıya olan veresiye, senetsiz borçlarda AZALIŞ meydana gelmiştir.	Ticari Borçlarda AZALIŞ / Stoklarda AZALIŞ meydana gelir.
+17	SATIŞ	100.KASA	600.YURTİÇİ SATIŞLAR	200.000 TL değerinde satış peşin (nakit) yapılmıştır	200.000,00	200.000,00	Kasadaki para varlığında ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+18	SATIŞ	102.BANKALAR	600.YURTİÇİ SATIŞLAR	200.000 TL değerinde satış peşin (banka havalesi ile) yapılmıştır	200.000,00	200.000,00	Bankadaki para varlığında ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+19	SATIŞ	120.ALICILAR	600.YURTİÇİ SATIŞLAR	700.000 TL değerinde satış 2 ay vadeli veresiye yapılmıştır	700.000,00	700.000,00	Müşterilerden (alıcılardan) olan veresiye alacaklarda ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir. (Müşteriler aynı zamanda Alıcılar demektir. Bu işlem sonrasında alıcılar işletmeye BOÇLU hale gelmişlerdir.)	Ticari Alacaklarda ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+20	SATIŞ	121.ALACAK SENETLERİ	600.YURTİÇİ SATIŞLAR	200.000 TL değerinde satış 2 ay vadeli senet alınarak yapılmıştır	200.000,00	200.000,00	Senetli alacaklarda ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir. (Senetli alacaklar istenirse daha sonra ciro edilebilecektir.)	Ticari Alacaklarda ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+21	SATIŞ	101.ALINAN ÇEKLER	600.YURTİÇİ SATIŞLAR	700.000 TL değerinde satış 2 ay vadeli çek alınarak yapılmıştır	700.000,00	700.000,00	Çekli alacaklarlada ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir. (Çekli alacaklar istenirse daha sonra ciro edilebilecektir.)	Hazır Değerlerde ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+22	SATIŞ	108.DİĞER HAZIR DEĞERLER	600.YURTİÇİ SATIŞLAR	200.000 TL değerinde satış kredi kartı ile yapılmıştır	200.000,00	200.000,00	Kredi kartından olan alacaklarlada ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir. (Kredi kartıyla satış yapılması paranın hemen bankaya yatması anlamına gelmez. Kredi kartından olan bu alacaklar daha sonra tahsil edildiğinde banka hesabına yatacaktır)	Hazır Değerlerde ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+23	SATIŞ	220.ALICILAR	600.YURTİÇİ SATIŞLAR	200.000 TL değerinde satış 20 ay vadeli veresiye yapılmıştır	200.000,00	200.000,00	Müşterilerden (alıcılardan) olan bir yıldan uzun vadelli veresiye alacaklarda ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir. (Müşteriler aynı zamanda Alıcılar demektir. Bu işlem sonrasında alıcılar işletmeye BOÇLU hale gelmişlerdir.)	Uzun Vadeli Ticari Alacaklarda ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+24	SATIŞ	221.ALACAK SENETLERİ	600.YURTİÇİ SATIŞLAR	200.000 TL değerinde satış 20 ay vadeli senet alınarak yapılmıştır	200.000,00	200.000,00	Bir yıldan uzun vadeli Senetli alacaklarda ARTIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir. (Senetli alacaklar istenirse daha sonra ciro edilebilecektir.)	Uzun Vadeli Ticari Alacaklarda ARTIŞ / Satış Gelirlerinde ARTIŞ meydana gelir.
+25	SATIŞ	610.SATIŞTAN İADELER (-)	120.ALICILAR	Müşteriye yapılan 12.000 TL değerinde satış, müşteri tarafından iade edilmiştir.	12.000,00	12.000,00	Satış İadesinde ARTIŞ / Müşteriden (Alıcıdan) olan veresiye alacaklarda AZALIŞ meydana gelmiştir.	Satış Gelirlerinde AZALIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+26	TAHSİLAT	100.KASA	120.ALICILAR	18.000 TL değerinde veresiye alacak nakten tahsil edilmiştir	18.000,00	18.000,00	Kasadaki para varlığında ARTIŞ / Müşteriden (Alıcıdan) olan veresiye alacaklarda AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+27	TAHSİLAT	102.BANKALAR	120.ALICILAR	22.000 TL değerinde veresiye alacak banka havalesi ile tahsil edilmiştir	22.000,00	22.000,00	Bankadaki para varlığında ARTIŞ / Müşteriden (Alıcıdan) olan veresiye alacaklarda AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+28	TAHSİLAT	101.ALINAN ÇEKLER	120.ALICILAR	200.000 TL değerinde veresiye alacak çek alınarak tahsil edilmiştir	200.000,00	200.000,00	Çekli alacak varlığında ARTIŞ / Müşteriden (Alıcıdan) olan veresiye alacaklarda AZALIŞ meydana gelmiştir. (Daha sonra alınan bu çekler ciro edilebilecektir.)	Hazır Değerlerde ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+29	TAHSİLAT	121.ALACAK SENETLERİ	120.ALICILAR	200.000 TL değerinde veresiye alacak senet alınarak tahsil edilmiştir	200.000,00	200.000,00	Senetli alacak varlığında ARTIŞ / Müşteriden (Alıcıdan) olan veresiye alacaklarda AZALIŞ meydana gelmiştir. (Daha sonra alınan bu senetler ciro edilebilecektir.)	Ticari Alacaklarda ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir. (Çünkü: Senetli ticari alacaklar artmış, senetsiz alacaklar azalmıştır)
+30	TAHSİLAT	108.DİĞER HAZIR DEĞERLER	120.ALICILAR	200.000 TL değerinde veresiye alacak kredi kartı ile tahsil edilmiştir	200.000,00	200.000,00	Kredi kartından olan alacaklarda ARTIŞ / Müşteriden (Alıcıdan) olan veresiye alacaklarda AZALIŞ meydana gelmiştir. (Daha sonra alınan kredi kartından olan bu alacaklar banka yolu ile tahsil edilecektir.)	Hazır Değerlerde ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+31	TAHSİLAT	100.KASA	121.ALACAK SENETLERİ	24.000 TL değerinde senetli alacak nakten tahsil edilmiştir	24.000,00	24.000,00	Kasadaki para varlığında ARTIŞ / Senetli alacak varlığında AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+32	TAHSİLAT	100.KASA	101.ALINAN ÇEKLER	200.000 TL değerinde çekli alacak nakten tahsil edilmiştir	200.000,00	200.000,00	Kasadaki para varlığında ARTIŞ / Çekli alacak varlığında AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+33	TAHSİLAT	102.BANKALAR	101.ALINAN ÇEKLER	200.000 TL değerinde çekli alacak banka hesabı ile tahsil edilmiştir	200.000,00	200.000,00	Bankadaki para varlığında ARTIŞ / Çekli alacak varlığında AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+34	TAHSİLAT	102.BANKALAR	108.DİĞER HAZIR DEĞERLER	200.000 TL değerinde kredi kartı alacağı tahsil edilmiştir. Tahsilat tutarı banka hesabına yatmıştır.	200.000,00	200.000,00	Bankadaki para varlığında ARTIŞ / Kredi kartından olan alacak varlığında AZALIŞ meydana gelmiştir. (Bu işlemin yapılabilmesi için daha önce kredi kartı ile satış yapılmış olması gerekir)	Hazır Değerlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+35	ÖDEME	320.SATICILAR	100.KASA	10.000 TL değerinde veresiye borç kasadan nakten ödenmiştir.	10.000,00	10.000,00	Satıcılara olan veresiye ticari borçlarda AZALIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir.	Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+36	ÖDEME	320.SATICILAR	102.BANKALAR	30.000 TL değerinde veresiye borç banka havalesi ile ödenmiştir.	30.000,00	30.000,00	Satıcılara olan veresiye ticari borçlarda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+37	ÖDEME	320.SATICILAR	103.VERİLEN ÇEKLER VE ÖDEME EMİRLERİ (-)	40.000 TL değerinde veresiye borç çek keşide edilerek ödenmiştir.	40.000,00	40.000,00	Satıcılara olan veresiye ticari borçlarda AZALIŞ / Çekli borçlarda ARTIŞ meydana meydana gelmiştir. (Aslında bir borç türü azalırken, diğer bir borç türünde artış meydana gelmiştir. İşletmenin toplam ticari borcu değişmemiştir.)	Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+38	ÖDEME	320.SATICILAR	321.BORÇ SENETLERİ	60.000 TL değerinde veresiye borç senet keşide edilerek ödenmiştir.	60.000,00	60.000,00	Satıcılara olan veresiye ticari borçlarda AZALIŞ / Senetli borçlarda ARTIŞ meydana meydana gelmiştir. (Aslında bir borç türü azalırken, diğer bir borç türünde artış meydana gelmiştir. İşletmenin toplam ticari borcu değişmemiştir.)	Ticari Borçlarda AZALIŞ / Ticari Borçlarda ARTIŞ meydana gelir. 
+39	ÖDEME	320.SATICILAR	101.ALINAN ÇEKLER	200.000 TL değerinde veresiye borç çek ciro edilerek ödenmiştir.	200.000,00	200.000,00	Satıcılara olan veresiye ticari borçlarda AZALIŞ / Çekli alacak varlığında AZALIŞ meydana meydana gelmiştir. (Bu işlemin yapılabilmesi için daha önce çek alınmış olması gerekir.)	Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+40	ÖDEME	320.SATICILAR	121.ALACAK SENETLERİ	90.000 TL değerinde veresiye borç senet ciro edilerek ödenmiştir.	90.000,00	90.000,00	Satıcılara olan veresiye ticari borçlarda AZALIŞ / Senetli alacak varlığında AZALIŞ meydana meydana gelmiştir. (Bu işlemin yapılabilmesi için daha önce senet alınmış olması gerekir.)	Ticari Borçlarda AZALIŞ / Ticari Alacaklarda AZALIŞ meydana gelir. 
+41	ÖDEME	321.BORÇ SENETLERİ	100.KASA	200.000 TL değerinde senetli borç nakten ödenmiştir.	200.000,00	200.000,00	Senetli boçlarda AZALIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir.	Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+42	ÖDEME	103.VERİLEN ÇEKLER VE ÖDEME EMİRLERİ (-)	100.KASA	200.000 TL değerinde çek borcu nakten (kasadan) ödenmiştir.	200.000,00	200.000,00	Çekli boçlarda AZALIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Hazır Değerlerden AZALIŞ meydana gelir.(Çünkü çek borcunun ödenmesi ödenecek çek tutarını azaltarak hazır değerleri artırır)
+43	ÖDEME	103.VERİLEN ÇEKLER VE ÖDEME EMİRLERİ (-)	102.BANKALAR	40.000 TL değerinde çek borcu banka hesabından ödenmiştir.	40.000,00	40.000,00	Çekli boçlarda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Hazır Değerlerden AZALIŞ meydana gelir.(Çünkü çek borcunun ödenmesi ödenecek çek tutarını azaltarak hazır değerleri artırır)
+44	GİDER TAHAKKUKLARI	632.GENEL YÖNETİM GİDERLERİ (-)	335.PERSONELE BORÇLAR	İdari personel, 200.000 TL değerinde ücret hak etmiştir. Henüz ödeme yapılmamıştır.	200.000,00	200.000,00	Genel Yönetim Giderlerinde ARTIŞ / Personele olan borçlarda ARTIŞ meydana gelmiştir. (İdari personel olduğu için Genel Yönetim Gideri hesabına kaydedilir. Bu işleme aynı zamanda "ücret tahakkuku" denir. Çünkü personel ücret hak etmiştir ve personele olan borç kesinleşmiştir. Personeller işletmeden ALACAKLI hale gelmişlerdir.)	Giderlerde ARTIŞ / Diğer Borçlarda ARTIŞ meydana gelir.
+45	GİDER TAHAKKUKLARI	631.PAZARLAMA, SATIŞ VE DAĞITIM GİDERLERİ(-)	335.PERSONELE BORÇLAR	Pazarlama personeli, 200.000 TL değerinde ücret hak etmiştir. Henüz ödeme yapılmamıştır.	200.000,00	200.000,00	Pazarlama Giderlerinde ARTIŞ / Personele olan borçlarda ARTIŞ meydana gelmiştir. (Pazarlama personeli olduğu için Pazarlama Gideri hesabına kaydedilir. Bu işleme aynı zamanda "ücret tahakkuku" denir. Çünkü personel ücret hak etmiştir ve personele olan borç kesinleşmiştir. Personeller işletmeden ALACAKLI hale gelmişlerdir.)	Giderlerde ARTIŞ / Diğer Borçlarda ARTIŞ meydana gelir.
+46	GİDER TAHAKKUKLARI	632.GENEL YÖNETİM GİDERLERİ (-)	329.DİĞER TİCARİ BORÇLAR	10.000 TL'lik elektrik faturası gelmiş, henüz ödenmemiştir.	10.000,00	10.000,00	Genel Yönetim Giderlerinde ARTIŞ / Diğer Ticari Borçlarda ARTIŞ meydana gelmiştir. (Elektrik idaresi hizmet satıcısıdır. bu nedenle ticari mal satan işletmeler ile karışmaması için 320 Satıcılar hesabı yerine 329 Diğer Ticari Borçlar hesabına kayıt yapılmaktadır.)	Giderlerde ARTIŞ / Diğer Ticari Borçlarda ARTIŞ meydana gelir.
+47	GİDER TAHAKKUKLARI	632.GENEL YÖNETİM GİDERLERİ (-)	329.DİĞER TİCARİ BORÇLAR	20.000 TL'lik telefon faturası gelmiş, henüz ödenmemiştir.	20.000,00	20.000,00	Genel Yönetim Giderlerinde ARTIŞ / Diğer Ticari Borçlarda ARTIŞ meydana gelmiştir. (Turkcell, Vodafone gibi firmalar hizmet satıcısıdır. Bu nedenle ticari mal satan işletmeler ile karışmaması için 320 Satıcılar hesabı yerine 329 Diğer Ticari Borçlar hesabına kayıt yapılmaktadır.)	Giderlerde ARTIŞ / Diğer Ticari Borçlarda ARTIŞ meydana gelir.
+48	GİDER TAHAKKUKLARI	632.GENEL YÖNETİM GİDERLERİ (-)	329.DİĞER TİCARİ BORÇLAR	30.000 TL'lik kira dönemi gelmiş, henüz ödenmemiştir.	30.000,00	30.000,00	Genel Yönetim Giderlerinde ARTIŞ / Diğer Ticari Borçlarda ARTIŞ meydana gelmiştir. (Kiralayan kişi veya firma bir hizmet satıcısıdır. Bu nedenle ticari mal satan işletmeler ile karışmaması için 320 Satıcılar hesabı yerine 329 Diğer Ticari Borçlar hesabına kayıt yapılmaktadır.)	Giderlerde ARTIŞ / Diğer Ticari Borçlarda ARTIŞ meydana gelir.
+49	GİDER TAHAKKUKLARI	660.FİNANSMAN GİDERLERİ (-)	300.BANKA KREDİLERİ	40.000 TL kredi faizi tahakkuk etmiştir.	40.000,00	40.000,00	Finansman Giderlerinde ARTIŞ / Bankaya olan kredi borcunda ARTIŞ meydana gelmiştir. (Faiz tahakkuku, faizin kesinleşerek ödenecek hale gelmesi ancak henüz ödenmemesidir. Kesinleşen faiz anapranın üzerine eklenerek işletmenin bankaya olan kredi borcunu artırır.)	Giderlerde ARTIŞ / Finansal Borçlarda ARTIŞ meydana gelir.
+50	GİDER TAHAKKUKLARI	632.GENEL YÖNETİM GİDERLERİ (-)	361.ÖDENECEK SOSYAL GÜVENLİK KESİNTİLERİ	Personel ücretlerine ait 40.000 TL sosyal güvenlik kesintileri ilgili kuruma ödenecektir.	40.000,00	40.000,00	Genel Yönetim Giderlerinde ARTIŞ / Ödenecek Vergi ve Fonlarda  ARTIŞ meydana gelmiştir.	Giderlerde ARTIŞ / Vergi ve SGK Borçlarında ARTIŞ meydana gelir.
+51	GİDER TAHAKKUKLARI	631.PAZARLAMA, SATIŞ VE DAĞITIM GİDERLERİ(-)	361.ÖDENECEK SOSYAL GÜVENLİK KESİNTİLERİ	Personel ücretlerine ait 30.000 TL vergi kesintileri ilgili kuruma ödenecektir.	30.000,00	30.000,00	Pazarlama  Giderlerinde ARTIŞ / Ödenecek Vergi ve Fonlarda  ARTIŞ meydana gelmiştir.	Giderlerde ARTIŞ / Vergi ve SGK Borçlarında ARTIŞ meydana gelir.
+52	BORÇ ÖDEME	335.PERSONELE BORÇLAR	102.BANKALAR	Personele olan, 90.000 TL ücret borcu bankadan ödenmiştir.	90.000,00	90.000,00	Personele olan ücret borcunda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Bu işlemde personel yeni bir ücret hak etmemiştir. Daha önce hak ettiği ücreti personele ödenmiştir. Günümüzde ücret ve maaş ödemeleri banaka hesaplarından yapılmaktadır.)	Diğer Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+53	BORÇ ÖDEME	329.DİĞER TİCARİ BORÇLAR	102.BANKALAR	10.000 TL'lik elektrik fatura borcu bankadan ödenmiştir..	10.000,00	10.000,00	Diğer ticari borçlarda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Bu işlemde yeni bir elektrik faturası gelmemiştir. Daha önce gelen ancak ödenmemiş olan fatura borcu şimdi ödenmiştir.)	Diğer Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+54	BORÇ ÖDEME	329.DİĞER TİCARİ BORÇLAR	102.BANKALAR	10.000 TL değerinde telefon fatura borçları bankadan ödenmiştir.	10.000,00	10.000,00	Diğer ticari borçlarda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Bu işlemde yeni bir telefon faturası gelmemiştir. Daha önce gelen ancak ödenmemiş olan fatura borcu şimdi ödenmiştir.)	Diğer Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+55	BORÇ ÖDEME	329.DİĞER TİCARİ BORÇLAR	102.BANKALAR	10.000 TL değerinde kira borcu bankadan ödenmiştir.	10.000,00	10.000,00	Diğer ticari borçlarda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Bu işlemde yeni bir kira anlaşması yapılmamıştır. Daha önce oluşan kira borcu şimdi ödenmiştir.)	Diğer Ticari Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+56	BORÇ ÖDEME	300.BANKA KREDİLERİ	102.BANKALAR	50.000 TL Kredi faiz borcu bankadan ödenmiştir.	50.000,00	50.000,00	Bankaya olan kredi borcunda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Bu işlemde yeni bir faiz gideri meydana gelmemiştir. Daha kesinleşen (tahakkuk eden) faiz borcu şimdi ödenmiştir.)	Finansal Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+57	BORÇ ÖDEME	360.ÖDENECEK VERGİ VE FONLAR	102.BANKALAR	20.000 TL Vergi borcu bankadan ödenmiştir.	20.000,00	20.000,00	Vergi ve SGK borçlarında AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Vergi ve SGK Borçlarında AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+58	BORÇ ÖDEME	361.ÖDENECEK SOSYAL GÜVENLİK KESİNTİLERİ	102.BANKALAR	20.000 TL Sosyal güvenlik (SGK) borcu bankadan ödenmiştir.	20.000,00	20.000,00	Vergi ve SGK borçlarında AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Vergi ve SGK Borçlarında AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir. 
+59	KÜÇÜK GİDER ÖDEME	632.GENEL YÖNETİM GİDERLERİ (-)	100.KASA	1.000 TL değerinde yemek gideri kasadan ödenmiştir.	1.000,00	1.000,00	Genel Yönetim Giderlerinde ARTIŞ/ Kasadaki para varlığında AZALIŞ meydana gelmiştir. (Ödeme hemen yapıldığı için herhangi bir cari hesap kullanılmamış doğrudan kasadan ödemesi yapılmıştır. Hemen ödenmeseydi kasa yerine 329 Diğer Ticari Borçlar hesabı kullanılırdı.)	Giderlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+60	KÜÇÜK GİDER ÖDEME	632.GENEL YÖNETİM GİDERLERİ (-)	100.KASA	1.000 TL değerinde çeşitli kırtasiye harcaması kasadan yapılmıştır.	1.000,00	1.000,00	Genel Yönetim Giderlerinde ARTIŞ/ Kasadaki para varlığında AZALIŞ meydana gelmiştir. (Ödeme hemen yapıldığı için herhangi bir cari hesap kullanılmamış doğrudan kasadan ödemesi yapılmıştır. Hemen ödenmeseydi kasa yerine 329 Diğer Ticari Borçlar hesabı kullanılırdı.)	Giderlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+61	KÜÇÜK GİDER ÖDEME	632.GENEL YÖNETİM GİDERLERİ (-)	100.KASA	1.000 TL değerinde kargo ödemesi kasadan yapılmıştır.	1.000,00	1.000,00	Genel Yönetim Giderlerinde ARTIŞ/ Kasadaki para varlığında AZALIŞ meydana gelmiştir. (Ödeme hemen yapıldığı için herhangi bir cari hesap kullanılmamış doğrudan kasadan ödemesi yapılmıştır. Hemen ödenmeseydi kasa yerine 329 Diğer Ticari Borçlar hesabı kullanılırdı.)	Giderlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+62	FAİZ ÖDEME	660.FİNANSMAN GİDERLERİ (-)	102.BANKALAR	Kredi faizi olarak bankaya, 20.000 TL faiz ödemesi yapılmıştır.	20.000,00	20.000,00	Finansman Giderlerinde ARTIŞ/ Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Hemen ödenmeseydi, faiz tahakkuk etmiş olurdu ve banka hesabı yerine 300 Banka Kredisi hesabı kullanılırdı.)	Giderlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+63	FAİZ ÖDEME	660.FİNANSMAN GİDERLERİ (-)	102.BANKALAR	Bankadan kullanılan kredi için 21.000 TL işlem masrafı ödemesi yapılmıştır.	21.000,00	21.000,00	Finansman Giderlerinde ARTIŞ/ Bankadaki para varlığında AZALIŞ meydana gelmiştir. (İşlem masrafları kredi ile ilgili olduğundan 660 finansman gideri hesabı kullanılır)	Giderlerde ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+64	KREDİ KULLANIMI	102.BANKALAR	300.BANKA KREDİLERİ	Bankadan, 2.000.000 TL kısa vadeli kredi kullanılmıştır	2.000.000,00	2.000.000,00	Bankadaki para varlığında ARTIŞ/ Bankaya olan kredi borcunda ARTIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Finansal Borçlarda ARTIŞ meydana gelir.
+65	KREDİ KULLANIMI	102.BANKALAR	400.BANKA KREDİLERİ	Bankadan, 200.000 TL uzun vadeli kredi kullanılmıştır	200.000,00	200.000,00	Bankadaki para varlığında ARTIŞ/ Bankaya olan 1 yıldan uzun kredi borcunda ARTIŞ meydana gelmiştir.	Hazır Değerlerde ARTIŞ / Uzun Vadeli Finansal Borçlarda ARTIŞ meydana gelir.
+66	UZUN KISA	400.BANKA KREDİLERİ	300.BANKA KREDİLERİ	50.000 TL uzun vadeli banka kredisi borcu kısa vadeli hale gelmiştir	50.000,00	50.000,00	Bankaya olan 1 yıldan uzun vadeli kredi borcunda AZALIŞ / Bankaya olan kısa vadeli kredi borcunda ARTIŞ meydana gelmiştir. (İşletmenin toplam borç miktarı değişmemiş sadece borcun vadesi kısalmıştır.)	Uzun Vadeli Finansal Borçlarda AZALIŞ / Kısa Vadeli Finansal Borçlarda ARTIŞ meydana gelir.
+67	UZUN KISA	420.SATICILAR	320.SATICILAR	50.000 TL uzun vadeli satıcı borcu kısa vadeli hale gelmiştir.	50.000,00	50.000,00	Satıcıya olan 1 yıldan uzun vadeli borçlarda AZALIŞ / Satıcıya olan 1 yıldan kısa vadeli borçlarda ARTIŞ meydana gelmiştir. (İşletmenin toplam borç miktarı değişmemiş sadece borcun vadesi kısalmıştır.)	Uzun Vadeli Ticari Borçlarda AZALIŞ / Kısa Vadeli Ticari Borçlarda ARTIŞ meydana gelir.
+68	UZUN KISA	421.BORÇ SENETLERİ	321.BORÇ SENETLERİ	60.000 TL uzun vadeli senetli borç kısa vadeli hale gelmiştir.	60.000,00	60.000,00	1 yıldan uzun vadeli senetli borçlarda AZALIŞ / 1 yıldan kısa vadeli senetli borçlarda ARTIŞ meydana gelmiştir. (İşletmenin toplam borç miktarı değişmemiş sadece borcun vadesi kısalmıştır.)	Uzun Vadeli Ticari Borçlarda AZALIŞ / Kısa Vadeli Ticari Borçlarda ARTIŞ meydana gelir.
+69	UZUN KISA	120.ALICILAR	220.ALICILAR	60.000 TL uzun vadeli veresiye alacak kısa vadeli hale gelmiştir.	60.000,00	60.000,00	1 yıldan kısa vadeli veresiye senetsiz alacaklarda ARTIŞ / 1 yıldan uzun vadeli veresiye senetsiz alacaklarda AZALIŞ meydana gelmiştir. (İşletmenin toplam ticari alacak miktarı değişmemiş sadece ticari alacakların vadesi kısalmıştır.)	Kısa vadeli Ticari Alacaklarda ARTIŞ / Uzun Vadeli Ticari Alacaklarda AZALIŞ meydana gelir.
+70	UZUN KISA	121.ALACAK SENETLERİ	221.ALACAK SENETLERİ	40.000 TL uzun vadeli senetli alacak kısa vadeli hale gelmiştir.	40.000,00	40.000,00	1 yıldan kısa vadeli senetli alacaklarda ARTIŞ / 1 yıldan uzun vadeli senetli alacaklarda AZALIŞ meydana gelmiştir. (İşletmenin toplam senetli ticari alacak miktarı değişmemiş sadece senetli ticari alacakların vadesi kısalmıştır.)	Kısa vadeli Ticari Alacaklarda ARTIŞ / Uzun Vadeli Ticari Alacaklarda AZALIŞ meydana gelir.
+71	DİĞER	100.KASA	331.ORTAKLARA BORÇLAR	Ortak tarafından işletmenin kasasına 400.000 TL para koyularak işletmeye kısa vadeli borç para verilmiştir.	400.000,00	400.000,00	Kasadaki para varlığında ARTIŞ / Ortaklara olan borçlarda ARTIŞ meydana gelmiştir. (İşletme ortağı ya da sahibi kendi işletmesinden ALACAKLI hale gelmiştir.)	Hazır Değerlere ARTIŞ / Diğer Borçlarda ARTIŞ meydana gelir.
+72	DİĞER	100.KASA	431.ORTAKLARA BORÇLAR	Ortak tarafından işletmenin kasasına 200.000 TL para koyularak işletmeye uzun vadeli borç para verilmiştir.	200.000,00	200.000,00	Kasadaki para varlığında ARTIŞ / Ortaklara olan uzun vadeli borçlarda ARTIŞ meydana gelmiştir. (İşletme ortağı ya da sahibi kendi işletmesinden ALACAKLI hale gelmiştir.)	Hazır Değerlere ARTIŞ / Uzun Vadeli Diğer Borçlarda ARTIŞ meydana gelir.
+73	KREDİ GERİ ÖDEME	300.BANKA KREDİLERİ	102.BANKALAR	Bankaya olan 70.000 TL kredi kartı borcu, banka hesabından ödenmiştir.	70.000,00	70.000,00	Bankaya olan kredi borcunda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Kredi kartı bocunun ödenmesi için daha önce kredi kartı ile bir şeyin satın alınmış olması gerekir. Kredi kartının işletme sahibine değil işletmeye ait olduğu düşünülmelidir.)	Finansal Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+74	SMM	621.SATILAN TİCARİ MALLAR MALİYETİ (-)	153.TİCARİ MALLAR	Satılan mal maliyeti 2.100.000 TL olarak hesaplanmıştır.	2.100.000,00	2.100.000,00	Satılan Mal Maliyetinde ARTIŞ / Ticari mal varlığından AZALIŞ meydana gelmiştir. (Satılan mallar nedeni ile ticari mal varlığındaki azalış ticaret yapan işletmelerin en büyük gideridir. Bu gidere SMM denir. SMM alış maliyeti ile hesaplanır. Burada hesaplanmış olarak verilmiştir. Nasıl hesaplanacağı konusu ayrıca çalışılmalıdır.)	Giderlerde ARTIŞ / Stoklarda AZALIŞ meydana gelir.
+75	DURAN VARLIK SATIN ALINMASI	255.DEMİRBAŞLAR	329.DİĞER TİCARİ BORÇLAR	200.000 TL değerinde çeşitli demirbaşlar 2 ay vadeli veresiye satın alınmıştır.	200.000,00	200.000,00	Demirbaş varlığında ARTIŞ / Satıcıya olan ticari borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Ticari Borçlarda ARTIŞ meydana gelir.
+76	DURAN VARLIK SATIN ALINMASI	255.DEMİRBAŞLAR	321.BORÇ SENETLERİ	200.000 TL değerinde çeşitli demirbaşlar 2 ay vadeli senet keşide edilerek satın alınmıştır.	200.000,00	200.000,00	Demirbaş varlığında ARTIŞ / Senetli borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Ticari Borçlarda ARTIŞ meydana gelir.
+77	DURAN VARLIK SATIN ALINMASI	255.DEMİRBAŞLAR	429.DİĞER TİCARİ BORÇLAR	200.000 TL değerinde çeşitli demirbaşlar 18 ay vadeli veresiye satın alınmıştır.	200.000,00	200.000,00	Demirbaş varlığında ARTIŞ / Satıcıya olan uzun vadeli ticari borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Uzun Vadeli Ticari Borçlarda ARTIŞ meydana gelir.
+78	DURAN VARLIK SATIN ALINMASI	255.DEMİRBAŞLAR	421.BORÇ SENETLERİ	200.000 TL değerinde çeşitli demirbaşlar 20 ay vadeli senet keşide edilerek satın alınmıştır.	200.000,00	200.000,00	Demirbaş varlığında ARTIŞ / Uzun vadeli senetli borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Uzun Vadeli Ticari Borçlarda ARTIŞ meydana gelir.
+79	DURAN VARLIK SATIN ALINMASI	255.DEMİRBAŞLAR	102.BANKALAR	200.000 TL değerinde çeşitli demirbaşlar banka hesabından yapılan ödeme ile satın alınmıştır.	200.000,00	200.000,00	Demirbaş varlığında ARTIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+80	DURAN VARLIK SATIN ALINMASI	255.DEMİRBAŞLAR	103.VERİLEN ÇEKLER VE ÖDEME EMİRLERİ (-)	200.000 TL değerinde çeşitli demirbaşlar çek keşide edilerek satın alınmıştır.	200.000,00	200.000,00	Demirbaş varlığında ARTIŞ / Çekli borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir. (Çünkü çek keşide edilmesi banka hesabındaki kullanılabilecek para tutarını azaltır)
+81	DURAN VARLIK SATIN ALINMASI	254.TAŞITLAR	329.DİĞER TİCARİ BORÇLAR	200.000 TL değerinde Taşıt 2 ay vadeli veresiye satın alınmıştır.	200.000,00	200.000,00	Taşıt varlığında ARTIŞ / Satıcıya olan ticari borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Ticari Borçlarda ARTIŞ meydana gelir.
+82	DURAN VARLIK SATIN ALINMASI	254.TAŞITLAR	321.BORÇ SENETLERİ	200.000 TL değerinde Taşıt 2 ay vadeli senet keşide edilerekl satın alınmıştır.	200.000,00	200.000,00	Taşıt varlığında ARTIŞ / Senetli borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Ticari Borçlarda ARTIŞ meydana gelir.
+83	DURAN VARLIK SATIN ALINMASI	254.TAŞITLAR	420.SATICILAR	200.000 TL değerinde Taşıt 18 ay vadeli veresiye satın alınmıştır.	200.000,00	200.000,00	Taşıt varlığında ARTIŞ / Satıcıya olan uzun vadeli ticari borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Uzun Vadeli Ticari Borçlarda ARTIŞ meydana gelir.
+84	DURAN VARLIK SATIN ALINMASI	254.TAŞITLAR	421.BORÇ SENETLERİ	200.000 TL değerinde Taşıt 20 ay vadeli senet keşide edilerekl satın alınmıştır.	200.000,00	200.000,00	Taşıt varlığında ARTIŞ / Uzun vadeli senetli borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Uzun Vadeli Ticari Borçlarda ARTIŞ meydana gelir.
+85	DURAN VARLIK SATIN ALINMASI	254.TAŞITLAR	300.BANKA KREDİLERİ	200.000 TL değerinde Taşıt kısa vadeli banka kredisi kullanılarak satın alınmıştır.	200.000,00	200.000,00	Taşıt varlığında ARTIŞ / Bankaya olan kredi borcunda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Finansal Borçlarda ARTIŞ meydana gelir.
+86	DURAN VARLIK SATIN ALINMASI	254.TAŞITLAR	102.BANKALAR	200.000 TL değerinde Taşıt banka hesabından yapılan ödeme ile satın alınmıştır.	200.000,00	200.000,00	Taşıt varlığında ARTIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir. (Çünkü çek keşide edilmesi bankada bekleyen ödemelerden kullanılabilecek para tutarını azaltır)
+87	DURAN VARLIK SATIN ALINMASI	254.TAŞITLAR	103.VERİLEN ÇEKLER VE ÖDEME EMİRLERİ (-)	200.000 TL değerinde Taşıt çek keşide edilerek satın alınmıştır.	200.000,00	200.000,00	Taşıt varlığında ARTIŞ / Çekli borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir. (Çünkü çek keşide edilmesi banka hesabındaki kullanılabilecek para tutarını azaltır)
+88	DURAN VARLIK SATIN ALINMASI	253.TESİS, MAKİNE VE CİHAZLAR	320.SATICILAR	500.000 TL değerinde Üretim Makinesi 2 ay vadeli veresiye satın alınmıştır.	500.000,00	500.000,00	Makine varlığında ARTIŞ / Ticari borçlarda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Ticari Borçlarda ARTIŞ meydana gelir.
+89	DURAN VARLIK SATIN ALINMASI	253.TESİS, MAKİNE VE CİHAZLAR	300.BANKA KREDİLERİ	700.000 TL değerinde Makine kısa vadeli banka kredisi kullanılarak satın alınmıştır.	700.000,00	700.000,00	Makine varlığında ARTIŞ / Bankaya olan kredi borcunda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Finansal Borçlarda ARTIŞ meydana gelir.
+90	DURAN VARLIK SATIN ALINMASI	252.BİNALAR	102.BANKALAR	700.000 TL değerinde İşyeri (bina) banka hesabından yapılan ödeme ile satın alınmıştır.	700.000,00	700.000,00	Bina varlığında ARTIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+91	DURAN VARLIK SATIN ALINMASI	252.BİNALAR	300.BANKA KREDİLERİ	800.000 TL değerinde İşyeri (bina) kısa vadeli banka kredisi kullanılarak satın alınmıştır.	800.000,00	800.000,00	Bina varlığında ARTIŞ / Bankaya olan kredi borcunda ARTIŞ meydana gelmiştir.	Maddi Duran Varlıklarda ARTIŞ / Finansal Borçlarda ARTIŞ meydana gelir.
+92	KURUMLAR VERGİSİ	691.DÖNEM KARI VERGİ VE DİĞ.YAS.YÜK.KAR. (-)	360.ÖDENECEK VERGİ VE FONLAR	Dönem karı üzerinden 200.000 TL ödenecek vergi tahakkuk etmiştir.	200.000,00	200.000,00	Vergi Giderinde ARTIŞ / Ödenecek Vergi borcunda ARTIŞ meydana gelmiştir.(Bu vergi işletmenin kazancı veya karı üzeriden ödenecek olan kurumlar geçici vergisidir. Vergi ödenecek hale gelip kesinleştiğinde tahakkuk etmiş demektir.)	Giderlerde ARTIŞ / Ödenecek Vergi Borçlarında ARTIŞ meydana gelir.
+93	VERGİ ÖDEMESİ	360.ÖDENECEK VERGİ VE FONLAR	102.BANKALAR	80.000 TL vergi ödemesi banka hesabından yapılmıştır.	80.000,00	80.000,00	Ödenecek vergi borcunda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir.	Vergi borçlarında AZALIŞ / Haır Değerlerde AZALIŞ meydana gelir
+94	DİĞER	102.BANKALAR	100.KASA	Kasadaki paranın 200.000 TL'si bankaya yatırılmıştır.	200.000,00	200.000,00	Bankadaki para varlığında ARTIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir.	Hazır Değerlerden ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+95	DİĞER	100.KASA	102.BANKALAR	Bankadan 200.000 TL para çekilerek kasaya konmuştur.	200.000,00	200.000,00	Kasadaki para varlığında ARTIŞ / bankadaki para varlığında AZALIŞ meydana gelmiştir.	Hazır Değerlerden ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+96	KREDİ ÖDEME	300.BANKA KREDİLERİ	102.BANKALAR	Bankaya olan 200.000 TL kredi borcu, banka hesabından ödenmiştir.	200.000,00	200.000,00	Bankaya olan kredi borcunda AZALIŞ / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Kredi bocunun ödenmesi için daha önce kredi kullanılmış olması gerekir. Burada kredi anapara borcu ödemesi yapıldığı düşünülmelidir.)	Finasal Borçlarda AZALIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+97	AMORTİSMAN	632.GENEL YÖNETİM GİDERLERİ (-)	257.BİRİKMİŞ AMORTİSMANLAR (-)	Yönetim bölümünde kullanılmakta olan demirbaşlar için 120.000 TL amortisman gideri hesaplanmıştır.	120.000,00	120.000,00	Giderlerde ARTIŞ / Birikmiş Amortismanlarda ARTIŞ meydana gelmiştir. Birikmiş amortismanın artması duran varlık değerinin azalması anlamına gelir. Amortisman, duran varlık değerindeki yıpranma, eskime kaynaklı değer kaybıdır.	Giderlerde ARTIŞ / Maddi Duran Varlıklarda AZALIŞ meydana gelir.
+98	AMORTİSMAN	631.PAZARLAMA, SATIŞ VE DAĞITIM GİDERLERİ(-)	257.BİRİKMİŞ AMORTİSMANLAR (-)	Pazarlama bölümünde kullanılmakta olan demirbaşlar için 110.000 TL amortisman gideri hesaplanmıştır.	110.000,00	110.000,00	Giderlerde ARTIŞ / Birikmiş Amortismanlarda ARTIŞ meydana gelmiştir. Birikmiş amortismanın artması duran varlık değerinin azalması anlamına gelir. Amortisman, duran varlık değerindeki yıpranma, eskime kaynaklı değer kaybıdır.	Giderlerde ARTIŞ / Maddi Duran Varlıklarda AZALIŞ meydana gelir.
+99	AVANSLI İŞLEMLER	102.BANKALAR	340.ALINAN SİPARİŞ AVANSLARI	Müşteriden 120.000 TL sipariş avansı alınmıştır. Avans tutarı banka hesabına yatmıştır	120.000,00	120.000,00	Bankadaki para varlığında ARTIŞ / Avans Borcunda ARTIŞ meydana gelmiştir. Daha sonra satış yapıldığında avans hesabı kapatılır. 	Hazır Değerlerde ARTIŞ / Alınan Avanslarda ARTIŞ meydana gelir.
+100	AVANSLI İŞLEMLER	340.ALINAN SİPARİŞ AVANSLARI	600.YURTİÇİ SATIŞLAR	Müşteriye 100.000 TL satış yapılmış, satış tutarı daha önce alınan sipariş avansından düşülmüştür	100.000,00	100.000,00	Alınmış avans tutarında AZALIŞ / Satış Gelirinde ARTIŞ meydana gelmiştir.	Alnınan Avanslarda AZALIŞ / Satış Gelirinde ARTIŞ meydana gelir.
+101	AVANSLI İŞLEMLER	159.VERİLEN SİPARİŞ AVANSLARI	102.BANKALAR	Satıcıya 200.000 TL sipariş avansı verilmiştir. Avans tutarı banka hesabından ödenmiştir.	200.000,00	200.000,00	Verilen avans (yoldaki mallar) tutarında ARTIŞ  / Bankadaki para varlığında AZALIŞ meydana gelmiştir. (Avans verildiği için ticari malların yolda olduğu ve yakında geleceği düşünülür.)	Stoklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+102	AVANSLI İŞLEMLER	153.TİCARİ MALLAR	159.VERİLEN SİPARİŞ AVANSLARI	Satıcıdan 150.000 TL ticari mal alınmış, alış bedeli daha önce verilen sipariş avansından düşülmüştür	150.000,00	150.000,00	Ticari mal varlığında ARTIŞ / Verilen avans tutarında AZALIŞ meydana gelmiştir.	Stoklarda ARTIŞ / Stoklarda AZALIŞ meydana gelir.
+103	AVANSLI İŞLEMLER	195.İŞ AVANSLARI	100.KASA	İş ile ilgili seyahate giden personele 10.000 TL iş avansı ödemesi kasadan yapılmıştır.	10.000,00	10.000,00	İş avansı alacaklarında ARTIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir. (Personel seyehatten döndüğünde işletme için yaptığı harcamalar işletmenin giderlerine kaydedilerek avans hesabı kapatılır)	Diğer Dönen Varlıkarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+104	AVANSLI İŞLEMLER	631.PAZARLAMA, SATIŞ VE DAĞITIM GİDERLERİ(-)	195.İŞ AVANSLARI	İş ile ilgili seyahatten dönen Pazarlama personelinin iş ile ilgili yaptığı 9.000 TL harcama, personele daha önce ödenen iş avansından düşülmüştür.	9.000,00	9.000,00	Pazarlama Giderlerinde ARTIŞ / İş avansı alacaklarında AZALIŞ meydana gelmiştir. (Harcamalar iş ile ilgili olduğu için işletmenin giderlerine kaydedilir. İş ile ilgili olmayanlar personelin maaşından kesilir veya personelden geri alınır.)	Giderlerde ARTIŞ / Diğer Dönen Varlıklarda AZALIŞ meydana gelir.
+105	AVANSLI İŞLEMLER	196.PERSONEL AVANSLARI	100.KASA	İhtiyaç belirten personele daha sonra maaşından kesilmek üzere 7.000 TL maaş avansı ödemesi kasadan yapılmıştır.	7.000,00	7.000,00	Personelden olan avans alacaklarında  ARTIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir.	Diğer Dönen Varlıklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+106	AVANSLI İŞLEMLER	335.PERSONELE BORÇLAR	196.PERSONEL AVANSLARI	Daha önce personele verilmiş olan 5.000 TL maaş avansı, personelin maaşından kesilmiştir.	5.000,00	5.000,00	Personele olan maaş borcunda AZALIŞ / Personelden olan avans alacaklarında AZALIŞ meydana gelmiştir.	Diğer Borçlarda AZALIŞ / Diğer Dönen Varlıklarda AZALIŞ meydana gelir.
+107	DEPOZİTOLU İŞLEMLER	226.VERİLEN DEPOZİTO VE TEMİNATLAR	100.KASA	Elektrik aboneliği için 40.000 TL depozito ödemesi kasadan yapılmıştır. Aboneliğin en az 1 yıl süreceği tahmin edilmektedir.	40.000,00	40.000,00	Uzun Vadeli Depozito ve Teminat alacaklarında ARTIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir. Abonelik sona erdiğinde depozito geri alınacaktır.	Uzun Vadeli Ticari Alacaklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+108	DEPOZİTOLU İŞLEMLER	126.VERİLEN DEPOZİTO VE TEMİNATLAR	100.KASA	Kiralanan bir işyeri için 30.000 TL depozito ödemesi kasadan yapılmıştır. Kira süresi 5 yıldır	30.000,00	30.000,00	Uzun Vadeli Depozito ve Teminat alacaklarında ARTIŞ / Kasadaki para varlığında AZALIŞ meydana gelmiştir. Kira süresi sona erdiğinde depozito geri alınacaktır.	Uzun Vadeli Ticari Alacaklarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+109	DEPOZİTOLU İŞLEMLER	126.VERİLEN DEPOZİTO VE TEMİNATLAR	226.VERİLEN DEPOZİTO VE TEMİNATLAR	Daha önce verilen  14.000 TL depozito bedeli kısa vadeli hale gelmiştir.	14.000,00	14.000,00	Kısa vadeli depozito ve teminat alacaklarında ARTIŞ / Uzun Vadeli Depozito ve Teminat alacaklarında AZALIŞ meydana gelmiştir. (Örneğin kira süresinin bitimine 1 yıldan kısa süre kalmıştır.	Kısa Vadeli Ticari Alacaklarda ARTIŞ / Uzun Vadeli Ticari Alacaklarda AZALIŞ meydana gelir.
+110	DEPOZİTOLU İŞLEMLER	100.KASA	126.VERİLEN DEPOZİTO VE TEMİNATLAR	Daha önce verilen  5.000 TL depozito bedeli nakten tahsil edilmiştir	5.000,00	5.000,00	Kasadaki para varlığında ARTIŞ / Depozito ve teminat alacaklarında AZALIŞ meydana gelmiştir. (Örneğin kiralık işyeri tahliye edilmiş veya abonelik iptal edilmiş olabilir)	Kasadaki para varlıında ARTIŞ / Ticari Alacaklarda AZALIŞ meydana gelir.
+111	BORÇ ÖDEME	329.DİĞER TİCARİ BORÇLAR	103.VERİLEN ÇEKLER VE ÖDEME EMİRLERİ (-)	Diğer ticari borçlar 18.000 TL çek keşide edilerek ödenmiştir.	18.000,00	18.000,00	Diğer ticari borçlarda AZALIŞ  / Çekli borçlarında ARTIŞ meydana gelmiştir.	Ticari Borçlarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+112	BORÇ ÖDEME	329.DİĞER TİCARİ BORÇLAR	101.ALINAN ÇEKLER	Diğer ticari borçlar 12.000 TL çek ciro edilerek ödenmiştir.	12.000,00	12.000,00	Diğer ticari borçlarda AZALIŞ  / Çekli alacaklarda  AZALIŞ meydana gelmiştir.	Ticari Borçlarda ARTIŞ / Hazır Değerlerde AZALIŞ meydana gelir.
+</script>
+
+
+</body>
+</html>
